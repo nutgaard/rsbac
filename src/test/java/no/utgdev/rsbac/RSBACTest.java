@@ -13,10 +13,6 @@ class RSBACTest {
         RSBAC<Void> rsbac = new RSBACImpl<>(null);
 
         assertThrows(RSBACException.class, () -> rsbac
-                .deny("", () -> true)
-                .get(() -> "OK"));
-
-        assertThrows(RSBACException.class, () -> rsbac
                 .deny("", (aVoid) -> true)
                 .get(() -> "OK"));
     }
@@ -24,10 +20,6 @@ class RSBACTest {
     @Test
     void should_deny_if_permitCondition_is_false() {
         RSBAC<Void> rsbac = new RSBACImpl<>(null);
-
-        assertThrows(RSBACException.class, () -> rsbac
-                .permit("", () -> false)
-                .get(() -> "OK"));
 
         assertThrows(RSBACException.class, () -> rsbac
                 .permit("", (aVoid) -> false)
@@ -38,13 +30,13 @@ class RSBACTest {
     void should_return_message_from_failed_rule() {
         RSBAC<Void> rsbac = new RSBACImpl<>(null);
 
-        Executable failOnFirst = () -> rsbac.permit("Error 1", () -> false).get(() -> "OK");
+        Executable failOnFirst = () -> rsbac.permit("Error 1", (aVoid) -> false).get(() -> "OK");
         assertThrows(RSBACException.class, failOnFirst);
         assertThrowsHasMessage("Error 1", failOnFirst);
 
         Executable failOnLast = () -> rsbac
-                .permit("Error 1", () -> true)
-                .permit("Error 2", () -> false)
+                .permit("Error 1", (aVoid) -> true)
+                .permit("Error 2", (aVoid) -> false)
                 .get(() -> "OK");
         assertThrows(RSBACException.class, failOnLast);
         assertThrowsHasMessage("Error 2", failOnLast);
@@ -55,10 +47,10 @@ class RSBACTest {
         RSBAC<Void> rsbac = new RSBACImpl<>(null);
 
         String result = rsbac
-                .permit("Error 1", () -> true)
-                .deny("Error 2", () -> false)
-                .permit("Error 3", () -> true)
-                .deny("Error 4", () -> false)
+                .permit("Error 1", (aVoid) -> true)
+                .deny("Error 2", (aVoid) -> false)
+                .permit("Error 3", (aVoid) -> true)
+                .deny("Error 4", (aVoid) -> false)
                 .get(() -> "OK");
 
         assertEquals("OK", result);

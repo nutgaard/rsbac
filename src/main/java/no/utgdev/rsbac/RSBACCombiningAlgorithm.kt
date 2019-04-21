@@ -1,9 +1,8 @@
 package no.utgdev.rsbac
 
-import java.util.function.Function
-
 interface Combinable<CONTEXT> : Function<CONTEXT, DecisionEnums> {
     fun getMessage(): String
+    override fun invoke(context: CONTEXT): DecisionEnums
 }
 
 abstract class CombiningAlgo {
@@ -12,7 +11,6 @@ abstract class CombiningAlgo {
     companion object {
         @JvmField val denyOverride: CombiningAlgo = DenyOverride()
         @JvmField val firstApplicable: CombiningAlgo = FirstApplicable()
-
     }
 }
 
@@ -21,7 +19,7 @@ private class DenyOverride : CombiningAlgo() {
     override fun <CONTEXT> combine(policies: List<Combinable<CONTEXT>>, context: CONTEXT): Decision {
         var combinedDecision = Decision("No matching rule found", DecisionEnums.NOT_APPLICABLE)
         for (policy: Combinable<CONTEXT> in policies) {
-            val ruleDecision = policy.apply(context)
+            val ruleDecision = policy.invoke(context)
 
             combinedDecision = when (combinedDecision.decision) {
                 DecisionEnums.DENY -> combinedDecision
@@ -36,7 +34,7 @@ private class FirstApplicable : CombiningAlgo() {
     override fun <CONTEXT> combine(policies: List<Combinable<CONTEXT>>, context: CONTEXT): Decision {
         var combinedDecision = Decision("No matching rule found", DecisionEnums.NOT_APPLICABLE)
         for (policy: Combinable<CONTEXT> in policies) {
-            val ruleDecision = policy.apply(context)
+            val ruleDecision = policy.invoke(context)
 
             combinedDecision = when (combinedDecision.decision) {
                 DecisionEnums.DENY, DecisionEnums.PERMIT -> combinedDecision

@@ -1,13 +1,10 @@
 package no.utgdev.rsbac
 
-import no.utgdev.rsbac.DecisionEnums.*
-import java.util.function.Function
-import java.util.function.Supplier
+import no.utgdev.rsbac.DecisionEnums.DENY
+import no.utgdev.rsbac.DecisionEnums.PERMIT
 
 interface RSBAC<CONTEXT> {
-    fun permit(message: String, rule: Supplier<Boolean>): RSBACInstance<CONTEXT>
     fun permit(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstance<CONTEXT>
-    fun deny(message: String, rule: Supplier<Boolean>): RSBACInstance<CONTEXT>
     fun deny(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstance<CONTEXT>
     fun check(policy: Policy<CONTEXT>): RSBACInstance<CONTEXT>
     fun check(policyset: PolicySet<CONTEXT>): RSBACInstance<CONTEXT>
@@ -19,10 +16,8 @@ interface RSBACInstance<CONTEXT> : RSBAC<CONTEXT> {
     fun <S> get(result: Supplier<S>): S
 }
 
-class RSBACImpl<CONTEXT>(private val context: CONTEXT): RSBAC<CONTEXT> {
-    override fun permit(message: String, rule: Supplier<Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).permit(message, rule)
+class RSBACImpl<CONTEXT>(private val context: CONTEXT) : RSBAC<CONTEXT> {
     override fun permit(message: String, rule: Function<CONTEXT, Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).permit(message, rule)
-    override fun deny(message: String, rule: Supplier<Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).deny(message, rule)
     override fun deny(message: String, rule: Function<CONTEXT, Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).deny(message, rule)
     override fun check(policy: Policy<CONTEXT>) = RSBACInstanceImpl<CONTEXT, Void>(context).check(policy)
     override fun check(policyset: PolicySet<CONTEXT>) = RSBACInstanceImpl<CONTEXT, Void>(context).check(policyset)
@@ -30,7 +25,7 @@ class RSBACImpl<CONTEXT>(private val context: CONTEXT): RSBAC<CONTEXT> {
     override fun bias(bias: DecisionEnums) = RSBACInstanceImpl<CONTEXT, Void>(context).bias(bias)
 }
 
-class RSBACInstanceImpl<CONTEXT, OUTPUT>(val context: CONTEXT): RSBACInstance<CONTEXT> {
+class RSBACInstanceImpl<CONTEXT, OUTPUT>(val context: CONTEXT) : RSBACInstance<CONTEXT> {
     private var combiningAlgo: CombiningAlgo = CombiningAlgo.denyOverride
     private var policies: List<Combinable<CONTEXT>> = emptyList()
     private var bias = DENY
@@ -45,10 +40,7 @@ class RSBACInstanceImpl<CONTEXT, OUTPUT>(val context: CONTEXT): RSBACInstance<CO
         return this
     }
 
-    override fun permit(message: String, rule: Supplier<Boolean>) = permit(message, Function { rule.get() })
     override fun permit(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstanceImpl<CONTEXT, OUTPUT> = check(Policy(message, rule, PERMIT))
-
-    override fun deny(message: String, rule: Supplier<Boolean>) = deny(message, Function { rule.get() })
     override fun deny(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstanceImpl<CONTEXT, OUTPUT> = check(Policy(message, rule, DENY))
 
     override fun check(policy: Policy<CONTEXT>): RSBACInstanceImpl<CONTEXT, OUTPUT> = check(policy as Combinable<CONTEXT>)
@@ -65,7 +57,7 @@ class RSBACInstanceImpl<CONTEXT, OUTPUT>(val context: CONTEXT): RSBACInstance<CO
                 .withBias(this.bias)
 
         if (decision.decision == PERMIT) {
-            return result.get()
+            return result.invoke()
         }
 
         throw RSBACException(decision.message)
