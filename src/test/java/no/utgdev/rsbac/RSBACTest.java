@@ -10,7 +10,7 @@ class RSBACTest {
 
     @Test
     void should_deny_if_denyCondition_is_true() {
-        RSBAC<Void> rsbac = new RSBAC<>(null);
+        RSBAC<Void> rsbac = new RSBACImpl<>(null);
 
         assertThrows(RSBACException.class, () -> rsbac
                 .deny("", () -> true)
@@ -23,7 +23,7 @@ class RSBACTest {
 
     @Test
     void should_deny_if_permitCondition_is_false() {
-        RSBAC<Void> rsbac = new RSBAC<>(null);
+        RSBAC<Void> rsbac = new RSBACImpl<>(null);
 
         assertThrows(RSBACException.class, () -> rsbac
                 .permit("", () -> false)
@@ -36,7 +36,7 @@ class RSBACTest {
 
     @Test
     void should_return_message_from_failed_rule() {
-        RSBAC<Void> rsbac = new RSBAC<>(null);
+        RSBAC<Void> rsbac = new RSBACImpl<>(null);
 
         Executable failOnFirst = () -> rsbac.permit("Error 1", () -> false).get(() -> "OK");
         assertThrows(RSBACException.class, failOnFirst);
@@ -52,7 +52,7 @@ class RSBACTest {
 
     @Test
     void should_return_result_if_every_test_pass() {
-        RSBAC<Void> rsbac = new RSBAC<>(null);
+        RSBAC<Void> rsbac = new RSBACImpl<>(null);
 
         String result = rsbac
                 .permit("Error 1", () -> true)
@@ -66,7 +66,7 @@ class RSBACTest {
 
     @Test
     void should_expose_context_to_all_rules() {
-        RSBAC<String> rsbac = new RSBAC<>("Value");
+        RSBAC<String> rsbac = new RSBACImpl<>("Value");
 
         String result = rsbac
                 .permit("Error 1", (String context) -> context.equals("Value"))
@@ -75,6 +75,30 @@ class RSBACTest {
                 .get(() -> "OK");
 
         assertEquals("OK", result);
+    }
+
+    @Test
+    void should_have_default_deny_bias() {
+        RSBAC<String> rsbac = new RSBACImpl<>("value");
+
+        Executable biased = () -> rsbac
+                .check(new Policy<>("I have no Idea", (aVoid) -> DecisionEnums.NOT_APPLICABLE))
+                .get(() -> "OK");
+
+        assertThrows(RSBACException.class, biased);
+        assertThrowsHasMessage("I have no Idea", biased);
+    }
+
+    @Test
+    void should_respect_bias() {
+        RSBAC<String> rsbac = new RSBACImpl<>("value");
+
+        String biased = rsbac
+                .bias(DecisionEnums.PERMIT)
+                .check(new Policy<>("I have no Idea", (aVoid) -> DecisionEnums.NOT_APPLICABLE))
+                .get(() -> "OK");
+
+        assertEquals("OK", biased);
     }
 
 

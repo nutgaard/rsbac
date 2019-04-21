@@ -1,81 +1,73 @@
 package no.utgdev.rsbac
 
+import no.utgdev.rsbac.DecisionEnums.*
 import java.util.function.Function
 import java.util.function.Supplier
 
-class RSBACException(override val message: String) : RuntimeException(message)
-
-interface CombiningAlgo {
-    fun <CONTEXT> combine(policies: List<Policy<CONTEXT>>, context: CONTEXT): Decision
+interface RSBAC<CONTEXT> {
+    fun permit(message: String, rule: Supplier<Boolean>): RSBACInstance<CONTEXT>
+    fun permit(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstance<CONTEXT>
+    fun deny(message: String, rule: Supplier<Boolean>): RSBACInstance<CONTEXT>
+    fun deny(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstance<CONTEXT>
+    fun check(policy: Policy<CONTEXT>): RSBACInstance<CONTEXT>
+    fun check(policyset: PolicySet<CONTEXT>): RSBACInstance<CONTEXT>
+    fun combining(combiningAlgo: CombiningAlgo): RSBACInstance<CONTEXT>
+    fun bias(bias: DecisionEnums): RSBACInstance<CONTEXT>
 }
 
-class DenyOverrideCombiningAlgo : CombiningAlgo {
-    override  fun <CONTEXT> combine(policies: List<Policy<CONTEXT>>, context: CONTEXT): Decision {
-        for (policy: Policy<CONTEXT> in policies) {
-            val decision = if (policy.rule.apply(context)) policy.decisionEnums else policy.decisionEnums.negate()
-            if (decision == DecisionEnums.DENY) {
-                return Decision(policy.message, DecisionEnums.DENY)
-            }
-        }
-        return Decision("", DecisionEnums.PERMIT)
-    }
+interface RSBACInstance<CONTEXT> : RSBAC<CONTEXT> {
+    fun <S> get(result: Supplier<S>): S
 }
 
-enum class DecisionEnums {
-    PERMIT, DENY;
-
-    fun negate(): DecisionEnums {
-        return if (this == DENY) PERMIT else DENY
-    }
+class RSBACImpl<CONTEXT>(private val context: CONTEXT): RSBAC<CONTEXT> {
+    override fun permit(message: String, rule: Supplier<Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).permit(message, rule)
+    override fun permit(message: String, rule: Function<CONTEXT, Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).permit(message, rule)
+    override fun deny(message: String, rule: Supplier<Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).deny(message, rule)
+    override fun deny(message: String, rule: Function<CONTEXT, Boolean>) = RSBACInstanceImpl<CONTEXT, Void>(context).deny(message, rule)
+    override fun check(policy: Policy<CONTEXT>) = RSBACInstanceImpl<CONTEXT, Void>(context).check(policy)
+    override fun check(policyset: PolicySet<CONTEXT>) = RSBACInstanceImpl<CONTEXT, Void>(context).check(policyset)
+    override fun combining(combiningAlgo: CombiningAlgo) = RSBACInstanceImpl<CONTEXT, Void>(context).combining(combiningAlgo)
+    override fun bias(bias: DecisionEnums) = RSBACInstanceImpl<CONTEXT, Void>(context).bias(bias)
 }
 
-typealias Rule<CONTEXT> = Function<CONTEXT, Boolean>
-data class Decision(val message: String, val decision: DecisionEnums)
-data class Policy<CONTEXT>(
-        val message: String,
-        val rule: Rule<CONTEXT>,
-        val decisionEnums: DecisionEnums
-)
+class RSBACInstanceImpl<CONTEXT, OUTPUT>(val context: CONTEXT): RSBACInstance<CONTEXT> {
+    private var combiningAlgo: CombiningAlgo = CombiningAlgo.denyOverride
+    private var policies: List<Combinable<CONTEXT>> = emptyList()
+    private var bias = DENY
 
-class RSBAC<CONTEXT>(private val context: CONTEXT) {
-    fun permit(message: String, rule: Supplier<Boolean>) =
-            RSBACInstance<CONTEXT, Void>(context).permit(message, rule)
-
-    fun permit(message: String, rule: Function<CONTEXT, Boolean>) =
-            RSBACInstance<CONTEXT, Void>(context).permit(message, rule)
-
-    fun deny(message: String, rule: Supplier<Boolean>) =
-            RSBACInstance<CONTEXT, Void>(context).deny(message, rule)
-
-    fun deny(message: String, rule: Function<CONTEXT, Boolean>) =
-            RSBACInstance<CONTEXT, Void>(context).deny(message, rule)
-
-}
-
-class RSBACInstance<CONTEXT, OUTPUT>(val context: CONTEXT) {
-    private var combiningAlgo: CombiningAlgo = DenyOverrideCombiningAlgo()
-    private var policies: List<Policy<CONTEXT>> = emptyList()
-
-    fun permit(message: String, rule: Supplier<Boolean>) = permit(message, Function { rule.get() })
-    fun permit(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstance<CONTEXT, OUTPUT> {
-        this.policies = this.policies.plusElement(Policy(message, rule, DecisionEnums.PERMIT))
+    override fun combining(combiningAlgo: CombiningAlgo): RSBACInstanceImpl<CONTEXT, OUTPUT> {
+        this.combiningAlgo = combiningAlgo
         return this
     }
 
-
-    fun deny(message: String, rule: Supplier<Boolean>) = deny(message, Function { rule.get() })
-    fun deny(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstance<CONTEXT, OUTPUT> {
-        this.policies = this.policies.plusElement(Policy(message, rule, DecisionEnums.DENY))
+    override fun bias(bias: DecisionEnums): RSBACInstance<CONTEXT> {
+        this.bias = bias
         return this
     }
 
-    fun <S> get(result: Supplier<S>): S {
-        val decision: Decision = combiningAlgo.combine(this.policies, context)
+    override fun permit(message: String, rule: Supplier<Boolean>) = permit(message, Function { rule.get() })
+    override fun permit(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstanceImpl<CONTEXT, OUTPUT> = check(Policy(message, rule, PERMIT))
 
-        if (decision.decision == DecisionEnums.DENY) {
-            throw RSBACException(decision.message)
+    override fun deny(message: String, rule: Supplier<Boolean>) = deny(message, Function { rule.get() })
+    override fun deny(message: String, rule: Function<CONTEXT, Boolean>): RSBACInstanceImpl<CONTEXT, OUTPUT> = check(Policy(message, rule, DENY))
+
+    override fun check(policy: Policy<CONTEXT>): RSBACInstanceImpl<CONTEXT, OUTPUT> = check(policy as Combinable<CONTEXT>)
+    override fun check(policyset: PolicySet<CONTEXT>): RSBACInstanceImpl<CONTEXT, OUTPUT> = check(policyset as Combinable<CONTEXT>)
+
+    fun check(element: Combinable<CONTEXT>): RSBACInstanceImpl<CONTEXT, OUTPUT> {
+        this.policies = this.policies.plusElement(element)
+        return this
+    }
+
+    override fun <S> get(result: Supplier<S>): S {
+        val decision: Decision = combiningAlgo
+                .combine(this.policies, context)
+                .withBias(this.bias)
+
+        if (decision.decision == PERMIT) {
+            return result.get()
         }
 
-        return result.get()
+        throw RSBACException(decision.message)
     }
 }
