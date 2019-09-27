@@ -102,7 +102,7 @@ class RSBACTestKt {
         }
 
         assertThrows<RSBACException>(biased)
-        assertThrowsHasMessage("I have no Idea", biased)
+        assertThrowsHasMessage("No matching rule found", biased)
     }
 
     @Test

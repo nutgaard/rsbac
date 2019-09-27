@@ -78,7 +78,7 @@ class RSBACTest {
                 .get(() -> "OK");
 
         assertThrows(RSBACException.class, biased);
-        assertThrowsHasMessage("I have no Idea", biased);
+        assertThrowsHasMessage("No matching rule found", biased);
     }
 
     @Test

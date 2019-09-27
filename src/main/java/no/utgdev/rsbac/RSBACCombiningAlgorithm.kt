@@ -1,34 +1,38 @@
 package no.utgdev.rsbac
 
-interface Combinable<CONTEXT> : Function<CONTEXT, DecisionEnums> {
-    fun getMessage(): String
-    override fun invoke(context: CONTEXT): DecisionEnums
-}
-
 abstract class CombiningAlgo {
     abstract fun <CONTEXT> combine(policies: List<Combinable<CONTEXT>>, context: CONTEXT): Decision
 
     companion object {
-        @JvmField val denyOverride: CombiningAlgo = DenyOverride()
-        @JvmField val firstApplicable: CombiningAlgo = FirstApplicable()
+        @JvmField
+        val denyOverride: CombiningAlgo = DenyOverride()
+        @JvmField
+        val permitOverride: CombiningAlgo = PermitOverride()
+        @JvmField
+        val firstApplicable: CombiningAlgo = FirstApplicable()
     }
 }
 
 // Inspirert av https://www.axiomatics.com/blog/understanding-xacml-combining-algorithms/
-private class DenyOverride : CombiningAlgo() {
+private open class DecisionOverride(val overrideValue: DecisionEnums) : CombiningAlgo() {
     override fun <CONTEXT> combine(policies: List<Combinable<CONTEXT>>, context: CONTEXT): Decision {
         var combinedDecision = Decision("No matching rule found", DecisionEnums.NOT_APPLICABLE)
         for (policy: Combinable<CONTEXT> in policies) {
             val ruleDecision = policy.invoke(context)
 
-            combinedDecision = when (combinedDecision.decision) {
-                DecisionEnums.DENY -> combinedDecision
-                else -> Decision(policy.getMessage(), ruleDecision)
+            combinedDecision = when (ruleDecision) {
+                overrideValue -> return Decision(policy.getMessage(context), ruleDecision)
+                DecisionEnums.NOT_APPLICABLE -> combinedDecision
+                else -> Decision(policy.getMessage(context), ruleDecision)
             }
         }
         return combinedDecision
     }
+
 }
+
+private class PermitOverride : DecisionOverride(DecisionEnums.PERMIT)
+private class DenyOverride : DecisionOverride(DecisionEnums.DENY)
 
 private class FirstApplicable : CombiningAlgo() {
     override fun <CONTEXT> combine(policies: List<Combinable<CONTEXT>>, context: CONTEXT): Decision {
@@ -36,9 +40,13 @@ private class FirstApplicable : CombiningAlgo() {
         for (policy: Combinable<CONTEXT> in policies) {
             val ruleDecision = policy.invoke(context)
 
+            if (ruleDecision.isApplicable()) {
+                return Decision(policy.getMessage(context), ruleDecision)
+            }
+
             combinedDecision = when (combinedDecision.decision) {
                 DecisionEnums.DENY, DecisionEnums.PERMIT -> combinedDecision
-                DecisionEnums.NOT_APPLICABLE -> Decision(policy.getMessage(), ruleDecision)
+                DecisionEnums.NOT_APPLICABLE -> Decision(policy.getMessage(context), ruleDecision)
             }
         }
         return combinedDecision
